@@ -154,6 +154,12 @@ class PluginManager {
       description: 'Normalizes track titles, artists and album information.',
       version: '1.0.0',
     ),
+    BuiltinPlugin(
+      id: 'silver.youtube-provider',
+      name: 'YouTube music search',
+      description: 'Built-in NewPipe provider for online search and streaming.',
+      version: '1.0.0',
+    ),
   ];
 
   Future<List<String>> autoInstall(SharedPreferences prefs) async {
@@ -220,6 +226,11 @@ class _MusicHomeState extends State<MusicHome> {
     ));
     liked.addAll(prefs!.getStringList('liked') ?? []);
     installedPlugins = await PluginManager().autoInstall(prefs!);
+    try {
+      await newPipe.initialize();
+    } catch (_) {
+      // The provider is bundled; network access is only needed when searching or streaming.
+    }
     if (mounted) setState(() {});
     await _scanLibrary(silent: true);
   }
@@ -370,9 +381,18 @@ class _MusicHomeState extends State<MusicHome> {
       final results = await newPipe.search(query.trim());
       if (mounted) setState(() => remoteResults = results);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('YouTube search failed: $error')),
-      );
+      if (mounted) {
+        final message = error.toString();
+        final friendly = message.contains('SecurityException') ||
+                message.contains('Permission denied')
+            ? 'Internet access is missing from this build. Update Silver Music to the latest version.'
+            : message.contains('EAI_NODATA') || message.contains('UnknownHostException')
+                ? 'Could not reach YouTube. Check your internet connection or DNS and try again.'
+                : 'Search failed: $message';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendly)),
+        );
+      }
     } finally {
       if (mounted) setState(() => remoteSearching = false);
     }
