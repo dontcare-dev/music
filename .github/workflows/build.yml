@@ -30,13 +30,19 @@ jobs:
               p = Path(name)
               if not p.exists():
                   continue
-              s = p.read_text()
-              if "https://jitpack.io" not in s:
-                  if name.endswith(".kts"):
-                      s = s.replace("repositories {", 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
-                  else:
-                      s = s.replace("repositories {", "repositories {\n        maven { url 'https://jitpack.io' }", 1)
-                  p.write_text(s)
+              source = p.read_text()
+              marker = "dependencyResolutionManagement {"
+              start = source.find(marker)
+              if start < 0:
+                  raise SystemExit("dependencyResolutionManagement block not found")
+              repo = source.find("repositories {", start)
+              if repo < 0:
+                  raise SystemExit("Dependency repositories block not found")
+              insert_at = repo + len("repositories {")
+              if "https://jitpack.io" not in source:
+                  entry = '\\n        maven { url = uri("https://jitpack.io") }' if name.endswith(".kts") else "\\n        maven { url 'https://jitpack.io' }"
+                  source = source[:insert_at] + entry + source[insert_at:]
+                  p.write_text(source)
               break
           else:
               raise SystemExit("Generated Gradle settings file not found")
