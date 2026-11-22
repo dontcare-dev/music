@@ -22,6 +22,25 @@ jobs:
           channel: stable
           cache: true
       - run: flutter create --platforms=android .
+      - name: Add JitPack repository for NewPipe Extractor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in ("android/settings.gradle.kts", "android/settings.gradle"):
+              p = Path(name)
+              if not p.exists():
+                  continue
+              s = p.read_text()
+              if "https://jitpack.io" not in s:
+                  if name.endswith(".kts"):
+                      s = s.replace("repositories {", 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
+                  else:
+                      s = s.replace("repositories {", "repositories {\n        maven { url 'https://jitpack.io' }", 1)
+                  p.write_text(s)
+              break
+          else:
+              raise SystemExit("Generated Gradle settings file not found")
+          PY
       - name: Set Android compile SDK
         run: sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
       - name: Add media library permission
