@@ -131,6 +131,11 @@ class MetadataPlugin {
     final cleaned = value?.trim() ?? '';
     return cleaned.isEmpty ? 'Unknown artist' : cleaned;
   }
+
+  static String fileTitle(String value) {
+    final dot = value.lastIndexOf('.');
+    return title(dot > 0 ? value.substring(0, dot) : value);
+  }
 }
 
 class PluginManager {
@@ -313,7 +318,7 @@ class _MusicHomeState extends State<MusicHome> {
       if (path == null || !existing.add(path)) continue;
       tracks.add(Track(
         id: const Uuid().v4(),
-        title: MetadataPlugin.title(file.name.replaceFirst(RegExp(r'\.[^.]+
+        title: MetadataPlugin.fileTitle(file.name),
         path: path,
       ));
     }
