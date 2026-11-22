@@ -77,7 +77,7 @@ class _MusicHomeState extends State<MusicHome> {
     if (index < 0 || index >= tracks.length) return;
     try {
       setState(() => busy = true);
-      await player.setAudioSources(tracks.map((t) => AudioSource.file(t.path, tag: t.title)).toList(), initialIndex: index);
+      await player.setAudioSource(ConcatenatingAudioSource(children: tracks.map((t) => AudioSource.file(t.path, tag: t.title)).toList()), initialIndex: index);
       await player.play();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playback failed: $e')));
