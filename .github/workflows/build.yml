@@ -80,10 +80,10 @@ jobs:
           import re
           p = Path("android/app/build.gradle.kts")
           source = p.read_text()
-          match = re.search(r"buildTypes\\s*\\{", source)
+          match = re.search(r"buildTypes\s*\{", source)
           if not match:
               raise SystemExit("buildTypes block not found")
-          release = re.search(r"release\\s*\\{", source[match.end():])
+          release = re.search(r"release\s*\{", source[match.end():])
           if not release:
               raise SystemExit("release build type not found")
           start = match.end() + release.end() - 1
@@ -101,14 +101,14 @@ jobs:
               raise SystemExit("release block is unbalanced")
           body = source[start:end]
           if "isMinifyEnabled" not in body:
-              source = source[:end] + "\\n            isMinifyEnabled = false\\n            isShrinkResources = false\\n        " + source[end:]
+              source = source[:end] + "\n            isMinifyEnabled = false\n            isShrinkResources = false\n        " + source[end:]
           p.write_text(source)
           rules = Path("android/app/proguard-rules.pro")
           rules.write_text(
-              "-keep class org.mozilla.javascript.** { *; }\\n"
-              "-keep class org.mozilla.classfile.ClassFileWriter { *; }\\n"
-              "-dontwarn org.mozilla.javascript.tools.**\\n"
-              "-dontwarn java.beans.**\\n"
+              "-keep class org.mozilla.javascript.** { *; }\n"
+              "-keep class org.mozilla.classfile.ClassFileWriter { *; }\n"
+              "-dontwarn org.mozilla.javascript.tools.**\n"
+              "-dontwarn java.beans.**\n"
           )
           PY
       - name: Add media library permission
