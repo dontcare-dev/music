@@ -34,14 +34,14 @@ jobs:
               marker = "allprojects {"
               start = source.find(marker)
               if start < 0:
-                  source += '\\nallprojects { repositories { maven { url = uri("https://jitpack.io") } } }\\n' if name.endswith(".kts") else "\\nallprojects { repositories { maven { url 'https://jitpack.io' } } }\\n"
+                  source += '\nallprojects { repositories { maven { url = uri("https://jitpack.io") } } }\n' if name.endswith(".kts") else "\nallprojects { repositories { maven { url 'https://jitpack.io' } } }\n"
               else:
                   repo = source.find("repositories {", start)
                   if repo < 0:
                       raise SystemExit("allprojects repositories block not found")
                   insert_at = repo + len("repositories {")
                   if "https://jitpack.io" not in source:
-                      entry = '\\n        maven { url = uri("https://jitpack.io") }' if name.endswith(".kts") else "\\n        maven { url 'https://jitpack.io' }"
+                      entry = '\n        maven { url = uri("https://jitpack.io") }' if name.endswith(".kts") else "\n        maven { url 'https://jitpack.io' }"
                       source = source[:insert_at] + entry + source[insert_at:]
               p.write_text(source)
               break
