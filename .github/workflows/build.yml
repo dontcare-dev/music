@@ -63,14 +63,14 @@ jobs:
           end = source.find("}", start)
           block = source[start:end]
           if "isCoreLibraryDesugaringEnabled" not in block:
-              source = source[:end] + "\\n        isCoreLibraryDesugaringEnabled = true" + source[end:]
+              source = source[:end] + "\n        isCoreLibraryDesugaringEnabled = true" + source[end:]
           if "coreLibraryDesugaring(" not in source:
               dep = source.find("dependencies {")
               if dep < 0:
-                  source += '\\ndependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5") }\\n'
+                  source += '\ndependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5") }\n'
               else:
                   insert_at = dep + len("dependencies {")
-                  source = source[:insert_at] + '\\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")' + source[insert_at:]
+                  source = source[:insert_at] + '\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")' + source[insert_at:]
           p.write_text(source)
           PY
       - name: Add media library permission
