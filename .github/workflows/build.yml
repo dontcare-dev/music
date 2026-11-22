@@ -33,7 +33,7 @@ jobs:
               <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
           '''
           if "android.permission.READ_MEDIA_AUDIO" not in s:
-              s = s.replace("<application", permissions + "\\n    <application", 1)
+              s = s.replace("<application", permissions + "\n    <application", 1)
           p.write_text(s)
           PY
       - run: flutter pub get
