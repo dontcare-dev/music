@@ -67,13 +67,8 @@ jobs:
           matches = []
           for p in files:
               source = p.read_text()
-              if "com.github.teamnewpipe:NewPipeExtractor:" in source:
-                  updated = __import__("re").sub(
-                      r"com\\.github\\.teamnewpipe:NewPipeExtractor:[^'\\"]+",
-                      "com.github.teamnewpipe:NewPipeExtractor:0.26.5",
-                      source,
-                  )
-                  p.write_text(updated)
+              if "6992806323864d353c90ae180fa79bf3d98f07c8" in source:
+                  p.write_text(source.replace("6992806323864d353c90ae180fa79bf3d98f07c8", "0.26.5"))
                   matches.append(str(p))
           if not matches:
               raise SystemExit("Could not locate flutter_new_pipe_extractor Gradle dependency")
