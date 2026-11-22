@@ -1,0 +1,20 @@
+name: silver_music
+description: Cross-platform music player for Android and Windows.
+publish_to: "none"
+version: 0.1.0+1
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.24.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  just_audio: ^0.9.42
+  file_picker: ^8.1.7
+  shared_preferences: ^2.3.5
+  uuid: ^4.5.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
