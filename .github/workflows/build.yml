@@ -50,6 +50,29 @@ jobs:
           PY
       - name: Set Android compile SDK
         run: sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
+      - name: Enable core library desugaring
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          source = p.read_text()
+          marker = "compileOptions {"
+          start = source.find(marker)
+          if start < 0:
+              raise SystemExit("compileOptions block not found")
+          end = source.find("}", start)
+          block = source[start:end]
+          if "isCoreLibraryDesugaringEnabled" not in block:
+              source = source[:end] + "\\n        isCoreLibraryDesugaringEnabled = true" + source[end:]
+          if "coreLibraryDesugaring(" not in source:
+              dep = source.find("dependencies {")
+              if dep < 0:
+                  source += '\\ndependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5") }\\n'
+              else:
+                  insert_at = dep + len("dependencies {")
+                  source = source[:insert_at] + '\\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")' + source[insert_at:]
+          p.write_text(source)
+          PY
       - name: Add media library permission
         run: |
           python - <<'PY'
