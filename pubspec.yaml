@@ -9,6 +9,8 @@ dependencies:
   flutter:
     sdk: flutter
   just_audio: ^0.9.42
+  flutter_svg: ^2.2.3
+  on_audio_query: ^2.9.0
   file_picker: ^10.3.3
   shared_preferences: ^2.3.5
   uuid: ^4.5.1
