@@ -121,6 +121,18 @@ class BuiltinPlugin {
   final String version;
 }
 
+class MetadataPlugin {
+  static String title(String value) {
+    final cleaned = value.trim();
+    return cleaned.isEmpty ? 'Unknown title' : cleaned;
+  }
+
+  static String artist(String? value) {
+    final cleaned = value?.trim() ?? '';
+    return cleaned.isEmpty ? 'Unknown artist' : cleaned;
+  }
+}
+
 class PluginManager {
   static const bundled = <BuiltinPlugin>[
     BuiltinPlugin(
@@ -239,8 +251,8 @@ class _MusicHomeState extends State<MusicHome> {
             if (song.data.isEmpty) continue;
             found.add(Track(
               id: 'android-${song.id}',
-              title: song.title.trim().isEmpty ? 'Unknown title' : song.title,
-              artist: song.artist?.trim().isNotEmpty == true ? song.artist! : 'Unknown artist',
+              title: MetadataPlugin.title(song.title),
+              artist: MetadataPlugin.artist(song.artist),
               album: song.album ?? '',
               path: song.data,
             ));
@@ -301,7 +313,507 @@ class _MusicHomeState extends State<MusicHome> {
       if (path == null || !existing.add(path)) continue;
       tracks.add(Track(
         id: const Uuid().v4(),
-        title: file.name.replaceFirst(RegExp(r'\.[^.]+$'), ''),
+        title: MetadataPlugin.title(file.name.replaceFirst(RegExp(r'\.[^.]+
+        path: path,
+      ));
+    }
+    tracks.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    await _save();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _play(int index) async {
+    if (index < 0 || index >= tracks.length) return;
+    try {
+      setState(() => busy = true);
+      await player.setAudioSource(
+        ConcatenatingAudioSource(
+          children: tracks.map((track) => AudioSource.file(track.path, tag: track.title)).toList(),
+        ),
+        initialIndex: index,
+      );
+      await player.play();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to play this track: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _toggleLike(Track track) async {
+    setState(() {
+      if (!liked.add(track.id)) liked.remove(track.id);
+    });
+    await _save();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 820;
+    return Scaffold(
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (wide) _sidebar(),
+            Expanded(
+              child: Column(
+                children: [
+                  _topBar(wide),
+                  Expanded(child: _page()),
+                  _playerBar(),
+                  if (!wide) _mobileNav(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sidebar() => Container(
+        width: 224,
+        margin: const EdgeInsets.fromLTRB(14, 14, 0, 14),
+        padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
+        decoration: BoxDecoration(
+          color: panel,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: .055)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 4, 12, 28),
+              child: Row(
+                children: [
+                  SIcon('music', color: accent, size: 24),
+                  SizedBox(width: 10),
+                  Text('SILVER MUSIC', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Text('LIBRARY', style: TextStyle(fontSize: 10, color: muted, letterSpacing: 1.4, fontWeight: FontWeight.w700)),
+            ),
+            ...List.generate(5, (index) => _navItem(index)),
+            const Spacer(),
+            _navItem(5),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('${tracks.length} tracks on this device', style: const TextStyle(color: muted, fontSize: 11)),
+            ),
+          ],
+        ),
+      );
+
+  Widget _navItem(int index) {
+    final selected = tab == index;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => setState(() => tab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? accent.withValues(alpha: .13) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              SIcon(tabs[index].$2, size: 18, color: selected ? accent : muted),
+              const SizedBox(width: 12),
+              Text(tabs[index].$1, style: TextStyle(color: selected ? Colors.white : const Color(0xFFB9BBC2), fontSize: 13, fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _topBar(bool wide) => Padding(
+        padding: EdgeInsets.fromLTRB(wide ? 28 : 18, 22, 18, 18),
+        child: Row(
+          children: [
+            if (!wide) const SIcon('music', color: accent, size: 21),
+            if (!wide) const SizedBox(width: 10),
+            Text(tabs[tab].$1, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -.4)),
+            const Spacer(),
+            if (tab == 2)
+              IconButton(
+                tooltip: 'Scan music again',
+                onPressed: scanning ? null : _scanLibrary,
+                icon: const SIcon('refresh', color: muted),
+              ),
+            if (tab == 0 || tab == 2)
+              IconButton(
+                tooltip: 'Add audio files',
+                onPressed: _importFiles,
+                icon: const SIcon('plus', color: Colors.white),
+              ),
+          ],
+        ),
+      );
+
+  Widget _page() {
+    if (tab == 0) return _homePage();
+    if (tab == 1) return _searchPage();
+    if (tab == 2) return _libraryPage();
+    if (tab == 3) return _playlistsPage();
+    if (tab == 4) return _pluginsPage();
+    return _settingsPage();
+  }
+
+  Widget _homePage() => ListView(
+        padding: const EdgeInsets.fromLTRB(22, 4, 22, 24),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFF24212F),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF383345)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('YOUR COLLECTION', style: TextStyle(color: accent, fontSize: 10, letterSpacing: 1.6, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 12),
+                      const Text('All your music.\nIn one place.', style: TextStyle(fontSize: 27, height: 1.18, fontWeight: FontWeight.w700, letterSpacing: -.7)),
+                      const SizedBox(height: 18),
+                      Text('${tracks.length} tracks · ${liked.length} liked', style: const TextStyle(color: Color(0xFFB8B2C6), fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 82,
+                  height: 82,
+                  decoration: BoxDecoration(color: const Color(0xFF39334A), borderRadius: BorderRadius.circular(12)),
+                  child: const Center(child: SIcon('music', color: accent, size: 38)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+          _sectionTitle('Recently added', 'YOUR DEVICE'),
+          const SizedBox(height: 10),
+          if (tracks.isEmpty)
+            _emptyLibrary()
+          else
+            ...tracks.take(8).map((track) => _trackTile(track, tracks.indexOf(track))),
+        ],
+      );
+
+  Widget _libraryPage() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+            child: Row(
+              children: [
+                Text('${tracks.length} tracks', style: const TextStyle(color: muted, fontSize: 12)),
+                const Spacer(),
+                if (scanning) const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                const SizedBox(width: 8),
+                TextButton(onPressed: scanning ? null : _scanLibrary, child: const Text('Rescan')),
+                TextButton(onPressed: _importFiles, child: const Text('Add files')),
+              ],
+            ),
+          ),
+          if (tracks.isEmpty)
+            Expanded(child: _emptyLibrary())
+          else
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                itemCount: tracks.length,
+                itemBuilder: (_, index) => _trackTile(tracks[index], index),
+              ),
+            ),
+        ],
+      );
+
+  Widget _emptyLibrary() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SIcon('folder', size: 38, color: muted),
+              const SizedBox(height: 18),
+              const Text('No music found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                scanning ? scanMessage : scanMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: muted, height: 1.5, fontSize: 12),
+              ),
+              const SizedBox(height: 18),
+              OutlinedButton(onPressed: scanning ? null : _scanLibrary, child: const Text('Scan device')),
+              TextButton(onPressed: _importFiles, child: const Text('Choose audio files')),
+            ],
+          ),
+        ),
+      );
+
+  Widget _searchPage() => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: TextField(
+              controller: searchController,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: 'Search songs or artists',
+                hintStyle: const TextStyle(color: muted, fontSize: 13),
+                prefixIcon: const Padding(padding: EdgeInsets.all(14), child: SIcon('search', color: muted, size: 17)),
+                filled: true,
+                fillColor: panel,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Builder(builder: (_) {
+              final query = searchController.text.toLowerCase().trim();
+              final found = tracks.where((track) =>
+                track.title.toLowerCase().contains(query) ||
+                track.artist.toLowerCase().contains(query) ||
+                track.album.toLowerCase().contains(query)).toList();
+              if (found.isEmpty) return const Center(child: Text('No matching tracks', style: TextStyle(color: muted)));
+              return ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                children: found.map((track) => _trackTile(track, tracks.indexOf(track))).toList(),
+              );
+            }),
+          ),
+        ],
+      );
+
+  Widget _trackTile(Track track, int index) {
+    final active = current == index;
+    final isLiked = liked.contains(track.id);
+    return InkWell(
+      onTap: () => _play(index),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 43,
+              height: 43,
+              decoration: BoxDecoration(color: active ? const Color(0xFF39314F) : panel2, borderRadius: BorderRadius.circular(7)),
+              child: Center(child: SIcon('music', size: 19, color: active ? accent : muted)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: active ? accent : Colors.white)),
+                  const SizedBox(height: 4),
+                  Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: muted)),
+                ],
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () => _toggleLike(track),
+              icon: SIcon('heart', size: 17, color: isLiked ? accent : muted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _playlistsPage() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SIcon('list', color: muted, size: 34),
+              const SizedBox(height: 14),
+              const Text('Playlists', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+              const SizedBox(height: 7),
+              const Text('Playlist management is being built next.', style: TextStyle(color: muted, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+
+  Widget _pluginsPage() => ListView(
+        padding: const EdgeInsets.fromLTRB(22, 0, 22, 24),
+        children: [
+          const Text('Installed automatically', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          const Text('Silver Music installs its bundled providers on first launch.', style: TextStyle(color: muted, fontSize: 12, height: 1.5)),
+          const SizedBox(height: 18),
+          ...PluginManager.bundled.map((plugin) {
+            final installed = installedPlugins.contains(plugin.id);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 9),
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(9), border: Border.all(color: Colors.white.withValues(alpha: .055))),
+              child: Row(
+                children: [
+                  const SIcon('plug', color: accent, size: 21),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(plugin.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        Text(plugin.description, style: const TextStyle(color: muted, fontSize: 11, height: 1.4)),
+                        const SizedBox(height: 5),
+                        Text('v${plugin.version}', style: const TextStyle(color: muted, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                  Text(installed ? 'INSTALLED' : 'PENDING', style: TextStyle(color: installed ? const Color(0xFF8DD8A8) : muted, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          const Text('Community plugin execution is not enabled yet. Plugins need a verified sandbox runtime before third-party code can be installed and run safely.', style: TextStyle(color: muted, fontSize: 11, height: 1.5)),
+        ],
+      );
+
+  Widget _settingsPage() => ListView(
+        padding: const EdgeInsets.all(22),
+        children: [
+          const Text('Library', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          _settingRow('Automatic library scan', 'Scans music folders when the app starts', true),
+          _settingRow('Installed providers', '${installedPlugins.length} bundled plugins', false),
+          _settingRow('Local tracks', '${tracks.length} tracks indexed', false),
+          const SizedBox(height: 20),
+          OutlinedButton(onPressed: scanning ? null : _scanLibrary, child: const Text('Rescan music folders')),
+        ],
+      );
+
+  Widget _settingRow(String title, String subtitle, bool enabled) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF292B31)))),
+        child: Row(
+          children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: muted)),
+            ])),
+            if (enabled) const SIcon('refresh', color: accent, size: 17),
+          ],
+        ),
+      );
+
+  Widget _sectionTitle(String title, String detail) => Row(
+        children: [
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Text(detail, style: const TextStyle(fontSize: 9, color: muted, letterSpacing: 1.2, fontWeight: FontWeight.w700)),
+        ],
+      );
+
+  Widget _playerBar() {
+    if (current < 0 || current >= tracks.length) return const SizedBox(height: 5);
+    final track = tracks[current];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 4),
+      decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withValues(alpha: .06))),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(width: 39, height: 39, decoration: BoxDecoration(color: panel2, borderRadius: BorderRadius.circular(6)), child: const Center(child: SIcon('music', color: accent, size: 18))),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: muted)),
+              ])),
+              IconButton(visualDensity: VisualDensity.compact, onPressed: player.seekToPrevious, icon: const SIcon('prev', size: 18)),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: busy ? null : () => player.playing ? player.pause() : player.play(),
+                icon: SIcon(player.playing ? 'pause' : 'play', size: 21, color: Colors.white),
+              ),
+              IconButton(visualDensity: VisualDensity.compact, onPressed: player.seekToNext, icon: const SIcon('next', size: 18)),
+            ],
+          ),
+          StreamBuilder<Duration>(
+            stream: player.positionStream,
+            builder: (_, snapshot) {
+              final duration = player.duration ?? Duration.zero;
+              final position = snapshot.data ?? Duration.zero;
+              final max = duration.inMilliseconds.toDouble();
+              return SliderTheme(
+                data: SliderTheme.of(context).copyWith(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4), overlayShape: SliderComponentShape.noOverlay),
+                child: Slider(
+                  value: max <= 0 ? 0 : position.inMilliseconds.clamp(0, duration.inMilliseconds).toDouble(),
+                  max: max <= 0 ? 1 : max,
+                  onChanged: max <= 0 ? null : (value) => player.seek(Duration(milliseconds: value.round())),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileNav() => Container(
+        margin: const EdgeInsets.fromLTRB(10, 0, 10, 9),
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(10)),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [0, 1, 2, 3, 4].map((index) {
+            final selected = tab == index;
+            return InkWell(
+              onTap: () => setState(() => tab = index),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SIcon(tabs[index].$2, size: 18, color: selected ? accent : muted),
+                    const SizedBox(height: 4),
+                    Text(
+                      ['Home', 'Search', 'Library', 'Lists', 'Plugins'][index],
+                      style: TextStyle(fontSize: 9, color: selected ? Colors.white : muted),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      );
+}
+), '')),
         path: path,
       ));
     }
