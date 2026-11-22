@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:on_audio_query_pluse/on_audio_query.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'providers/lrclib_provider.dart';
 
 void main() => runApp(const SilverMusicApp());
 
@@ -175,6 +176,7 @@ class MusicHome extends StatefulWidget {
 class _MusicHomeState extends State<MusicHome> {
   final player = AudioPlayer();
   final audioQuery = OnAudioQuery();
+  final lrclib = LrclibProvider();
   final tracks = <Track>[];
   final liked = <String>{};
   final searchController = TextEditingController();
@@ -347,6 +349,40 @@ class _MusicHomeState extends State<MusicHome> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> _showLyrics(Track track) async {
+    final duration = player.duration;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: panel,
+        title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        content: FutureBuilder(
+          future: lrclib.findLyrics(
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            duration: duration,
+          ),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const SizedBox(height: 90, child: Center(child: CircularProgressIndicator()));
+            }
+            if (snapshot.hasError) return Text('Lyrics unavailable: ' + snapshot.error.toString());
+            final result = snapshot.data;
+            if (result == null || (result.syncedLyrics == null && result.plainLyrics == null)) {
+              return const Text('No lyrics found for this track.');
+            }
+            return SingleChildScrollView(
+              child: SelectableText(result.syncedLyrics ?? result.plainLyrics ?? 'Instrumental'),
+            );
+          },
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+      ),
+    );
   }
 
   Future<void> _toggleLike(Track track) async {
@@ -667,44 +703,44 @@ class _MusicHomeState extends State<MusicHome> {
         ),
       );
 
-  Widget _pluginsPage() => ListView(
-        padding: const EdgeInsets.fromLTRB(22, 0, 22, 24),
+  Widget _providerRow(String name, String category, String owner, String state, String icon) {
+    final ready = state == 'READY';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(9), border: Border.all(color: Colors.white.withValues(alpha: .055))),
+      child: Row(
         children: [
-          const Text('Installed automatically', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          const Text('Silver Music installs its bundled providers on first launch.', style: TextStyle(color: muted, fontSize: 12, height: 1.5)),
-          const SizedBox(height: 18),
-          ...PluginManager.bundled.map((plugin) {
-            final installed = installedPlugins.contains(plugin.id);
-            return Container(
-              margin: const EdgeInsets.only(bottom: 9),
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(9), border: Border.all(color: Colors.white.withValues(alpha: .055))),
-              child: Row(
-                children: [
-                  const SIcon('plug', color: accent, size: 21),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(plugin.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
-                        Text(plugin.description, style: const TextStyle(color: muted, fontSize: 11, height: 1.4)),
-                        const SizedBox(height: 5),
-                        Text('v${plugin.version}', style: const TextStyle(color: muted, fontSize: 10)),
-                      ],
-                    ),
-                  ),
-                  Text(installed ? 'INSTALLED' : 'PENDING', style: TextStyle(color: installed ? const Color(0xFF8DD8A8) : muted, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w700)),
-                ],
-              ),
-            );
-          }),
-          const SizedBox(height: 12),
-          const Text('Community plugin execution is not enabled yet. Plugins need a verified sandbox runtime before third-party code can be installed and run safely.', style: TextStyle(color: muted, fontSize: 11, height: 1.5)),
+          Container(width: 48, height: 48, decoration: BoxDecoration(color: panel2, borderRadius: BorderRadius.circular(10)), child: Center(child: SIcon(icon, color: accent, size: 23))),
+          const SizedBox(width: 13),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(category + ' · ' + owner, style: const TextStyle(color: muted, fontSize: 11)),
+          ])),
+          Text(state, style: TextStyle(color: ready ? const Color(0xFF8DD8A8) : muted, fontSize: 9, letterSpacing: .8, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 5),
+          const SIcon('next', color: muted, size: 17),
         ],
-      );
+      ),
+    );
+  }
+
+  Widget _pluginsPage() => ListView(
+    padding: const EdgeInsets.fromLTRB(22, 0, 22, 24),
+    children: [
+      const Text('Music providers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 5),
+      const Text('Provider integrations and metadata sources.', style: TextStyle(color: muted, fontSize: 12)),
+      const SizedBox(height: 18),
+      _providerRow('NewPipe YouTube', 'Audio', 'Team NewPipe', 'ANDROID ADAPTER PENDING', 'music'),
+      _providerRow('LRCLib Lyrics', 'Lyrics', 'LRCLIB', 'READY', 'list'),
+      _providerRow('YouTube Music', 'Metadata', 'YouTube Music', 'ADAPTER PENDING', 'music'),
+      _providerRow('Spotify', 'Metadata', 'Spotify', 'OAUTH REQUIRED', 'music'),
+      const SizedBox(height: 12),
+      const Text('LRCLIB lyrics lookup is implemented. Spotify catalog search requires an authorized access token. NewPipe stream resolution and YouTube Music metadata are not yet connected; these entries are not falsely marked as installed.', style: TextStyle(color: muted, fontSize: 11, height: 1.55)),
+    ],
+  );
 
   Widget _settingsPage() => ListView(
         padding: const EdgeInsets.all(22),
@@ -759,6 +795,7 @@ class _MusicHomeState extends State<MusicHome> {
                 Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                 Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: muted)),
               ])),
+              IconButton(tooltip: 'Lyrics', visualDensity: VisualDensity.compact, onPressed: () => _showLyrics(track), icon: const SIcon('list', size: 18)),
               IconButton(visualDensity: VisualDensity.compact, onPressed: player.seekToPrevious, icon: const SIcon('prev', size: 18)),
               IconButton(
                 visualDensity: VisualDensity.compact,
