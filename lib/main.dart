@@ -8,6 +8,7 @@ import 'package:on_audio_query_pluse/on_audio_query.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'providers/lrclib_provider.dart';
+import 'providers/newpipe_provider.dart';
 
 void main() => runApp(const SilverMusicApp());
 
@@ -177,6 +178,9 @@ class _MusicHomeState extends State<MusicHome> {
   final player = AudioPlayer();
   final audioQuery = OnAudioQuery();
   final lrclib = LrclibProvider();
+  final newPipe = NewPipeProvider();
+  List<NewPipeTrack> remoteResults = [];
+  bool remoteSearching = false;
   final tracks = <Track>[];
   final liked = <String>{};
   final searchController = TextEditingController();
@@ -333,10 +337,18 @@ class _MusicHomeState extends State<MusicHome> {
     if (index < 0 || index >= tracks.length) return;
     try {
       setState(() => busy = true);
+      final sources = <AudioSource>[];
+      for (final track in tracks) {
+        if (track.path.startsWith('newpipe:')) {
+          final videoId = track.path.substring('newpipe:'.length);
+          final streamUri = await newPipe.resolveAudio(videoId);
+          sources.add(AudioSource.uri(streamUri, tag: track.title));
+        } else {
+          sources.add(AudioSource.file(track.path, tag: track.title));
+        }
+      }
       await player.setAudioSource(
-        ConcatenatingAudioSource(
-          children: tracks.map((track) => AudioSource.file(track.path, tag: track.title)).toList(),
-        ),
+        ConcatenatingAudioSource(children: sources),
         initialIndex: index,
       );
       await player.play();
@@ -348,6 +360,38 @@ class _MusicHomeState extends State<MusicHome> {
       }
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _searchNewPipe(String query) async {
+    if (query.trim().isEmpty) return;
+    setState(() { remoteSearching = true; remoteResults = []; });
+    try {
+      final results = await newPipe.search(query.trim());
+      if (mounted) setState(() => remoteResults = results);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('YouTube search failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => remoteSearching = false);
+    }
+  }
+
+  Future<void> _playNewPipe(NewPipeTrack result) async {
+    final index = tracks.indexWhere((track) => track.id == 'newpipe:${result.id}');
+    if (index < 0) {
+      tracks.add(Track(
+        id: 'newpipe:${result.id}',
+        title: result.title,
+        artist: result.artist,
+        path: 'newpipe:${result.id}',
+      ));
+      await _save();
+      if (mounted) setState(() {});
+      await _play(tracks.length - 1);
+    } else {
+      await _play(index);
     }
   }
 
@@ -615,39 +659,68 @@ class _MusicHomeState extends State<MusicHome> {
       );
 
   Widget _searchPage() => Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-            child: TextField(
-              controller: searchController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Search songs or artists',
-                hintStyle: const TextStyle(color: muted, fontSize: 13),
-                prefixIcon: const Padding(padding: EdgeInsets.all(14), child: SIcon('search', color: muted, size: 17)),
-                filled: true,
-                fillColor: panel,
-                contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: BorderSide.none),
-              ),
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+        child: TextField(
+          controller: searchController,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: _searchNewPipe,
+          decoration: InputDecoration(
+            hintText: 'Search your library or YouTube',
+            hintStyle: const TextStyle(color: muted, fontSize: 13),
+            prefixIcon: const Padding(padding: EdgeInsets.all(14), child: SIcon('search', color: muted, size: 17)),
+            suffixIcon: IconButton(
+              tooltip: 'Search online',
+              onPressed: () => _searchNewPipe(searchController.text),
+              icon: const SIcon('music', color: accent, size: 18),
             ),
+            filled: true,
+            fillColor: panel,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: BorderSide.none),
           ),
-          Expanded(
-            child: Builder(builder: (_) {
-              final query = searchController.text.toLowerCase().trim();
-              final found = tracks.where((track) =>
-                track.title.toLowerCase().contains(query) ||
-                track.artist.toLowerCase().contains(query) ||
-                track.album.toLowerCase().contains(query)).toList();
-              if (found.isEmpty) return const Center(child: Text('No matching tracks', style: TextStyle(color: muted)));
-              return ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                children: found.map((track) => _trackTile(track, tracks.indexOf(track))).toList(),
-              );
-            }),
-          ),
-        ],
-      );
+        ),
+      ),
+      Expanded(
+        child: Builder(builder: (_) {
+          final query = searchController.text.toLowerCase().trim();
+          final found = tracks.where((track) =>
+            track.title.toLowerCase().contains(query) ||
+            track.artist.toLowerCase().contains(query) ||
+            track.album.toLowerCase().contains(query)).toList();
+          return ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            children: [
+              if (found.isNotEmpty) ...[
+                const Padding(padding: EdgeInsets.fromLTRB(8, 4, 8, 10), child: Text('YOUR LIBRARY', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w700))),
+                ...found.map((track) => _trackTile(track, tracks.indexOf(track))),
+              ],
+              if (remoteSearching) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+              if (remoteResults.isNotEmpty) ...[
+                const Padding(padding: EdgeInsets.fromLTRB(8, 18, 8, 10), child: Text('YOUTUBE RESULTS', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w700))),
+                ...remoteResults.map((result) => ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: result.artwork == null
+                      ? Container(width: 48, height: 48, color: panel2, child: const SIcon('music', color: muted))
+                      : Image.network(result.artwork!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(width: 48, height: 48, color: panel2)),
+                  ),
+                  title: Text(result.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  subtitle: Text(result.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: muted)),
+                  trailing: IconButton(onPressed: () => _playNewPipe(result), icon: const SIcon('play', color: accent, size: 19)),
+                  onTap: () => _playNewPipe(result),
+                )),
+              ],
+              if (found.isEmpty && remoteResults.isEmpty && !remoteSearching)
+                const Padding(padding: EdgeInsets.all(30), child: Center(child: Text('Search your library or search YouTube above.', style: TextStyle(color: muted)))),
+            ],
+          );
+        }),
+      ),
+    ],
+  );
 
   Widget _trackTile(Track track, int index) {
     final active = current == index;
