@@ -1,0 +1,4 @@
+[submodule "upstream/spotube"]
+	path = upstream/spotube
+	url = https://github.com/team-spotube/spotube.git
+	branch = v5.1.2
