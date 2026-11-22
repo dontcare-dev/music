@@ -58,6 +58,27 @@ jobs:
           p.write_text(s)
           PY
       - run: flutter pub get
+      - name: Pin NewPipe Extractor to published release
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import glob
+          files = [Path(p) for p in glob.glob(str(Path.home() / ".pub-cache/git/*/android/build.gradle"))]
+          matches = []
+          for p in files:
+              source = p.read_text()
+              if "com.github.teamnewpipe:NewPipeExtractor:" in source:
+                  updated = __import__("re").sub(
+                      r"com\\.github\\.teamnewpipe:NewPipeExtractor:[^'\\"]+",
+                      "com.github.teamnewpipe:NewPipeExtractor:0.26.5",
+                      source,
+                  )
+                  p.write_text(updated)
+                  matches.append(str(p))
+          if not matches:
+              raise SystemExit("Could not locate flutter_new_pipe_extractor Gradle dependency")
+          print("Pinned NewPipe Extractor in:", *matches, sep="\\n")
+          PY
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
       - run: flutter build apk --release
