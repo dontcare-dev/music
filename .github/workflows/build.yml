@@ -117,12 +117,19 @@ jobs:
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
-          permissions = '''
-              <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-          '''
-          if "android.permission.READ_MEDIA_AUDIO" not in s:
-              s = s.replace("<application", permissions + "\n    <application", 1)
+          permissions = [
+              'android.permission.INTERNET',
+              'android.permission.ACCESS_NETWORK_STATE',
+              'android.permission.READ_MEDIA_AUDIO',
+              'android.permission.READ_EXTERNAL_STORAGE',
+          ]
+          for permission in permissions:
+              if f'android:name="{permission}"' not in s:
+                  if permission == 'android.permission.READ_EXTERNAL_STORAGE':
+                      entry = '    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\\n'
+                  else:
+                      entry = f'    <uses-permission android:name="{permission}" />\\n'
+                  s = s.replace("<application", entry + "    <application", 1)
           p.write_text(s)
           PY
       - run: flutter pub get
