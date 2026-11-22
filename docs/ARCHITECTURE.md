@@ -11,9 +11,9 @@ The application targets Android and Windows using Flutter, with platform-specifi
 
 ## Milestone 0.1
 
-Implemented in this commit: Flutter application foundation, local audio import, persisted library metadata, local search, liked-track persistence, queue-backed file playback, transport controls and responsive navigation.
+Implemented: responsive Android/Windows UI, SVG-only navigation and controls, automatic Android MediaStore scanning, Windows Music/Downloads folder scanning, manual audio import fallback, persisted library metadata, local search, liked-track persistence, queue-backed playback, transport controls, and first-launch installation of bundled provider modules.
 
-Not implemented yet: remote streaming providers, signed third-party plugin execution, database migrations, background media sessions, authorized downloads, full playlist CRUD, Windows media integration and installer packaging. These must not be reported as complete until implemented and tested.
+Still not implemented: third-party .smplug execution, remote streaming providers, database migrations, background media sessions, authorized downloads, full playlist CRUD, Windows system media integration, and installer packaging. Bundled modules are installed automatically; external plugin execution must wait for a verified cross-platform sandbox runtime.
 
 ## Plugin runtime
 
